@@ -1,0 +1,226 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ATHLETE
+  SAI_ADMIN
+}
+
+enum AssessmentStatus {
+  UPLOADED
+  QUEUED
+  PROCESSING
+  VALIDATING
+  COMPLETED
+  NEEDS_RETAKE
+  REVIEW_REQUIRED
+  FAILED
+}
+
+enum ProtocolStatus {
+  OPERATIONAL
+  PARTIAL
+  CATALOGUE
+}
+
+enum ReviewDecision {
+  APPROVED
+  REJECTED
+  RETAKE_REQUESTED
+  FLAGGED
+}
+
+model User {
+  id           String          @id @default(uuid())
+  email        String          @unique
+  passwordHash String
+  role         Role            @default(ATHLETE)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  profile      AthleteProfile?
+  adminReviews AdminReview[]   @relation("AdminReviewer")
+  shortlists   Shortlist[]     @relation("AdminShortlists")
+  auditLogs    AuditLog[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model AthleteProfile {
+  id               String       @id @default(uuid())
+  userId           String       @unique
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName         String
+  dateOfBirth      DateTime
+  gender           String
+  state            String
+  district         String
+  primarySportId   String?
+  primarySport     Sport?       @relation(fields: [primarySportId], references: [id], onDelete: SetNull)
+  heightCm         Float?
+  weightKg         Float?
+  emergencyContact String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  assessments      Assessment[]
+  shortlistEntries ShortlistEntry[]
+
+  @@index([fullName])
+  @@index([state])
+}
+
+model Sport {
+  id             String           @id @default(uuid())
+  code           String           @unique
+  name           String
+  description    String
+  category       String
+  icon           String?
+  isOperational  Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  protocols      TestProtocol[]
+  athletes       AthleteProfile[]
+  assessments    Assessment[]
+  shortlists     Shortlist[]
+
+  @@index([code])
+}
+
+model TestProtocol {
+  id                  String         @id @default(uuid())
+  sportId             String
+  sport               Sport          @relation(fields: [sportId], references: [id], onDelete: Restrict)
+  code                String
+  name                String
+  description         String
+  version             Int            @default(1)
+  status              ProtocolStatus @default(OPERATIONAL)
+  recordingGuidelines Json
+  metricDefinitions   Json
+  scoringConfig       Json
+  validationRules     Json
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  assessments         Assessment[]
+
+  @@unique([sportId, code, version])
+  @@index([code, version])
+}
+
+model Assessment {
+  id                String            @id @default(uuid())
+  athleteId         String
+  athlete           AthleteProfile    @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  sportId           String
+  sport             Sport             @relation(fields: [sportId], references: [id], onDelete: Restrict)
+  protocolId        String
+  protocol          TestProtocol      @relation(fields: [protocolId], references: [id], onDelete: Restrict)
+  protocolVersion   Int
+  status            AssessmentStatus  @default(UPLOADED)
+  videoPath         String
+  videoOriginalName String
+  videoMimeType     String
+  videoSize         Int
+  durationSeconds   Float?
+  retryCount        Int               @default(0)
+  failureReason     String?
+  idempotencyKey    String?           @unique
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  result            AssessmentResult?
+  adminReviews      AdminReview[]
+  shortlistEntries  ShortlistEntry[]
+
+  @@index([athleteId])
+  @@index([sportId])
+  @@index([protocolId])
+  @@index([status])
+}
+
+model AssessmentResult {
+  id               String     @id @default(uuid())
+  assessmentId     String     @unique
+  assessment       Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  overallScore     Float?
+  confidenceScore  Float
+  validationPassed Boolean
+  rawMetrics       Json
+  derivedMetrics   Json
+  evidenceFrames   Json
+  validationFlags  Json
+  modelName        String     @default("yolo11n-pose")
+  modelVersion     String     @default("11n-1.0")
+  processedAt      DateTime   @default(now())
+  createdAt        DateTime   @default(now())
+
+  @@index([assessmentId])
+}
+
+model AdminReview {
+  id           String         @id @default(uuid())
+  assessmentId String
+  assessment   Assessment     @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  reviewerId   String
+  reviewer     User           @relation("AdminReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+  decision     ReviewDecision
+  reviewNotes  String
+  reviewedAt   DateTime       @default(now())
+  createdAt    DateTime       @default(now())
+
+  @@index([assessmentId])
+  @@index([reviewerId])
+}
+
+model Shortlist {
+  id          String           @id @default(uuid())
+  creatorId   String
+  creator     User             @relation("AdminShortlists", fields: [creatorId], references: [id], onDelete: Restrict)
+  name        String
+  description String?
+  sportId     String?
+  sport       Sport?           @relation(fields: [sportId], references: [id], onDelete: SetNull)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  entries     ShortlistEntry[]
+
+  @@index([creatorId])
+}
+
+model ShortlistEntry {
+  id           String         @id @default(uuid())
+  shortlistId  String
+  shortlist    Shortlist      @relation(fields: [shortlistId], references: [id], onDelete: Cascade)
+  athleteId    String
+  athlete      AthleteProfile @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  assessmentId String?
+  assessment   Assessment?    @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
+  notes        String?
+  addedAt      DateTime       @default(now())
+
+  @@unique([shortlistId, athleteId])
+  @@index([shortlistId])
+  @@index([athleteId])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String
+  entityType String
+  entityId   String?
+  details    Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([entityType])
+}
