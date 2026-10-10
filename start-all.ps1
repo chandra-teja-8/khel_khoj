@@ -11,7 +11,7 @@ Start-Sleep -Seconds 3
 
 # 2. Start Python FastAPI AI Service with YOLO11n-Pose
 Write-Host "[2/4] Starting AI Service (YOLO11n-Pose) on port 8000..." -ForegroundColor Green
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd 'd:\DOOM\apps\ai-service'; .\venv\Scripts\python.exe service.py"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd 'd:\DOOM\apps\ai-service'; .\venv\Scripts\uvicorn.exe service:app --host 127.0.0.1 --port 8000 --workers 2 --timeout-keep-alive 360"
 
 Start-Sleep -Seconds 3
 
